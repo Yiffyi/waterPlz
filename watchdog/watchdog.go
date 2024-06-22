@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/yiffyi/waterplz"
 	"github.com/yiffyi/waterplz/upstream"
