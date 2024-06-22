@@ -43,6 +43,7 @@ func main() {
 	}
 
 	http.Handle("/do", api.CreateV0Mux())
+	http.Handle("/v1/", api.CreateV1Mux())
 
 	go c.Watchdog.Start(&c.WeCom)
 	http.ListenAndServe(":8080", nil)
