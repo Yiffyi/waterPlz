@@ -1,6 +1,10 @@
 package upstream
 
-import "fmt"
+import (
+	"fmt"
+	"log/slog"
+	"strconv"
+)
 
 func (s *Session) UserInfo() (map[string]interface{}, error) {
 	result, err := s.httpGet("/user/info", nil)
@@ -39,4 +43,33 @@ func (s *Session) CloseOrder(SN string) error {
 	})
 
 	return err
+}
+
+func (s *Session) PerMoney(mainTypeId int, projectId int) (string, error) {
+	// do you really understand English?
+	ret, err := s.httpGet("/order/perMoney", map[string]string{
+		"mainTypeId": strconv.Itoa(mainTypeId),
+		"projectId":  strconv.Itoa(projectId),
+	})
+
+	if err != nil {
+		slog.Error("call GET /order/perMoney failed", "ret", ret, "err", err)
+		return "", err
+	}
+
+	return ret["data"].(string), nil
+}
+
+// macList: "c4:7f:0e:d5:4e:cb,c4:7f:0e:d5:4e:cc"
+func (s *Session) DeviceInfoList(projectId int, macList string) ([]interface{}, error) {
+	ret, err := s.httpGet("/device/info/list", map[string]string{
+		"macList":   macList,
+		"projectId": strconv.Itoa(projectId),
+	})
+	if err != nil {
+		slog.Error("call GET /device/info/list failed", "ret", ret, "err", err)
+		return nil, err
+	}
+
+	return ret["data"].([]interface{}), nil
 }

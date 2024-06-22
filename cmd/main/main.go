@@ -2,52 +2,48 @@ package main
 
 import (
 	"encoding/json"
-	"io"
+	"log/slog"
 	"net/http"
+	"os"
 
-	"github.com/yiffyi/waterplz/upstream"
+	"github.com/yiffyi/waterplz"
+	"github.com/yiffyi/waterplz/api"
+	"github.com/yiffyi/waterplz/watchdog"
 )
 
-type doParams struct {
-	Username string
-	Password string
-	SN       string
-}
-
-func doHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "I can't do that.", http.StatusMethodNotAllowed)
-		return
-	}
-
-	p := &doParams{}
-	err := json.NewDecoder(r.Body).Decode(p)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	s, err := upstream.CreateSession(p.Username, p.Password)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
-		return
-	}
-
-	if s.CreateOrder(p.SN) == nil {
-		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "热水开启咯！")
-		return
-	} else {
-		// s.CloseOrder("C47F0ED55446")
-		s.CloseOrder(p.SN)
-		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "热水关闭咯！")
-		return
-	}
+type Config struct {
+	Watchdog watchdog.Watchdog
+	WeCom    waterplz.WeComBot
 }
 
 func main() {
-	http.HandleFunc("/do", doHandler)
+	if _, err := os.Stat("config.json"); err != nil {
+		slog.Error("could not open config.json", "err", err)
 
+		b, err := json.MarshalIndent(Config{}, "", "    ")
+		if err != nil {
+			slog.Error("could not marshal empty Config", "err", err)
+		} else {
+			slog.Warn("empty config.json created")
+			os.WriteFile("config.json", b, 0644)
+		}
+
+		os.Exit(1)
+	}
+
+	b, err := os.ReadFile("config.json")
+	if err != nil {
+		panic(err)
+	}
+
+	c := Config{}
+	err = json.Unmarshal(b, &c)
+	if err != nil {
+		panic(err)
+	}
+
+	http.Handle("/do", api.CreateV0Mux())
+
+	go c.Watchdog.Start(&c.WeCom)
 	http.ListenAndServe(":8080", nil)
 }

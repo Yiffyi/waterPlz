@@ -49,12 +49,12 @@ func CreateSession(username string, password string) (*Session, error) {
 	return &s, nil
 }
 
-func CreateAnonymousSession() (*Session, error) {
+func CreateAnonymousSession() *Session {
 	s := Session{
 		c: &http.Client{},
 	}
 
-	return &s, nil
+	return &s
 }
 
 func (s *Session) httpPost(path string, data map[string]string) (map[string]interface{}, error) {
