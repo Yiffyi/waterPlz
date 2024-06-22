@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/yiffyi/waterplz/api"
+	"github.com/yiffyi/waterplz/upstream"
 )
 
 type doParams struct {
@@ -27,7 +27,7 @@ func doHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s, err := api.CreateSession(p.Username, p.Password)
+	s, err := upstream.CreateSession(p.Username, p.Password)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
