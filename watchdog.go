@@ -1,12 +1,13 @@
-package watchdog
+package waterplz
 
 import (
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
 	_ "time/tzdata"
 
-	"github.com/yiffyi/waterplz"
+	"github.com/yiffyi/gorad/notification"
 	"github.com/yiffyi/waterplz/upstream"
 )
 
@@ -18,15 +19,15 @@ type Watchdog struct {
 	DeviceMac    string
 
 	sess  *upstream.Session
-	wecom *waterplz.WeComBot
+	wecom *notification.WeComBot
 	tz    *time.Location
 	down  bool
 }
 
-func (w *Watchdog) notifyError(hint string) {
+func (w *Watchdog) notifyError(err error) {
 	md := "# 热水系统 Down\n"
 	md += "当前时间：" + time.Now().In(w.tz).String() + "\n"
-	md += `故障原因：<font color="warning">` + hint + `</font>`
+	md += `故障原因：<font color="warning">` + err.Error() + `</font>`
 	w.wecom.SendMarkdown(md)
 }
 
@@ -36,29 +37,25 @@ func (w *Watchdog) notifyRecover() {
 	w.wecom.SendMarkdown(md)
 }
 
-func (w *Watchdog) checkDeviceStatus() bool {
+func (w *Watchdog) checkDeviceStatus() error {
 	deviceList, err := w.sess.DeviceInfoList(w.ProjectId, w.DeviceMac)
 	if err != nil {
 		slog.Error("checkDeviceStatus: upstream failure", "err", err)
-		w.notifyError("上游 DeviceInfoList 返回错误")
-		return false
+		return errors.New("上游 DeviceInfoList 返回错误")
 	}
 
 	if len(deviceList) != 1 {
 		// however, if not found, it is still one anyway
 		slog.Error("checkDeviceStatus: incorrect array len", "deviceList", deviceList, "err", err)
-		w.notifyError("上游 DeviceInfoList 数组长度错误")
-		return false
+		return errors.New("上游 DeviceInfoList 数组长度错误")
 	}
 
-	allGood := true
 	for _, item := range deviceList {
 
 		dev, ok := item.(map[string]interface{})
 		if !ok {
 			slog.Error("checkDeviceStatus: invalid array item", "item", item)
-			w.notifyError("上游 DeviceInfoList 数组内容错误")
-			continue
+			return errors.New("上游 DeviceInfoList 数组内容错误")
 		}
 
 		slog.Debug("checkDeviceStatus: device found", "dev", dev)
@@ -66,9 +63,7 @@ func (w *Watchdog) checkDeviceStatus() bool {
 		m, ok := dev["devMac"].(string)
 		if !ok || !strings.Contains(m, w.DeviceMac) {
 			slog.Error("checkDeviceStatus: incorrect devMac returned from upstream", "w.mac", w.DeviceMac, "m", m)
-			w.notifyError("上游 DeviceInfoList devMac 错误")
-			allGood = false
-			continue
+			return errors.New("上游 DeviceInfoList devMac 错误")
 		}
 
 		ol, ok := dev["isOnline"].(float64)
@@ -76,37 +71,34 @@ func (w *Watchdog) checkDeviceStatus() bool {
 			slog.Info("checkDeviceStatus: device is online", "mac", m)
 		} else {
 			slog.Error("checkDeviceStatus: device not found or offline", "mac", m, "ol", ol)
-			w.notifyError("上游 DeviceInfoList 设备不存在或离线")
-			allGood = false
+			return errors.New("上游 DeviceInfoList 设备不存在或离线")
 		}
 	}
 
-	return allGood
+	return nil
 }
 
-func (w *Watchdog) checkPerMoney() bool {
+func (w *Watchdog) checkPerMoney() error {
 	per, err := w.sess.PerMoney(w.ProjectId, w.ProjectId)
 	if err != nil {
 		slog.Error("checkPerMoney: upstream failure", "err", err)
-		w.notifyError("上游 PerMoney 返回错误")
-		return false
+		return errors.New("上游 PerMoney 返回错误")
 	} else {
 		if per != "5.0" {
 			slog.Error("checkPerMoney: unknown perMoney returned", "value", per)
-			w.notifyError("上游 PerMoney 返回数据错误")
-			return false
+			return errors.New("上游 PerMoney 返回数据错误")
 		}
 	}
 	slog.Info("checkPerMoney: check passed", "value", per, "desire", "5.0")
-	return true
+	return nil
 }
 
-func (w *Watchdog) Start(wecom *waterplz.WeComBot) {
+func (w *Watchdog) Start(bot *notification.WeComBot) {
 
 	// to avoid conflit, currently don't test functions require login
 	w.sess = upstream.CreateAnonymousSession()
 	w.down = false
-	w.wecom = wecom
+	w.wecom = bot
 	var err error
 	w.tz, err = time.LoadLocation("Asia/Shanghai")
 	if err != nil {
@@ -118,14 +110,17 @@ func (w *Watchdog) Start(wecom *waterplz.WeComBot) {
 		<-ticker.C
 
 		// 1. test connectivity by query money per order
-		if !w.checkPerMoney() {
-			w.down = true
-			continue
-		}
+		// if !w.checkPerMoney() {
+		// 	w.down = true
+		// 	continue
+		// }
 
 		// 2. check if my device is online
-		if !w.checkDeviceStatus() {
-			w.down = true
+		if err := w.checkDeviceStatus(); err != nil {
+			if !w.down {
+				w.notifyError(err)
+				w.down = true
+			}
 			continue
 		}
 
