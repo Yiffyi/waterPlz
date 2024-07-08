@@ -45,7 +45,7 @@ func (w *Watchdog) checkDeviceStatus() error {
 	deviceList, err := w.sess.DeviceInfoList(w.ProjectId, w.DeviceMac)
 	if err != nil {
 		slog.Error("checkDeviceStatus: upstream failure", "err", err)
-		return errors.New("上游 DeviceInfoList 返回错误")
+		return fmt.Errorf("上游 DeviceInfoList 请求错误: %w", err)
 	}
 
 	if len(deviceList) != 1 {

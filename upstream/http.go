@@ -5,10 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const baseURL = "http://dhwc.westlake.edu.cn"
@@ -20,6 +22,8 @@ var commonFormFields = map[string]string{
 	"appId":       "wxc06f4dbb636009bb",
 }
 
+const REQUEST_TIMEOUT = 10 * time.Second
+
 type Session struct {
 	telPhone  string
 	loginCode string
@@ -29,7 +33,9 @@ type Session struct {
 
 func CreateSession(username string, password string) (*Session, error) {
 	s := Session{
-		c: &http.Client{},
+		c: &http.Client{
+			Timeout: REQUEST_TIMEOUT,
+		},
 	}
 
 	pwdHash := md5.Sum([]byte(password))
@@ -51,7 +57,9 @@ func CreateSession(username string, password string) (*Session, error) {
 
 func CreateAnonymousSession() *Session {
 	s := Session{
-		c: &http.Client{},
+		c: &http.Client{
+			Timeout: REQUEST_TIMEOUT,
+		},
 	}
 
 	return &s
@@ -135,9 +143,15 @@ func (s *Session) httpGet(path string, data map[string]string) (map[string]inter
 	}
 	defer resp.Body.Close()
 
+	statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("http: status=%s, statusOK=%t, could not read body: %w", resp.Status, statusOK, err)
+	}
+
+	if !statusOK {
+		return nil, fmt.Errorf("http: bad statusCode: %d %s", resp.StatusCode, resp.Status)
 	}
 
 	var result map[string]interface{}
