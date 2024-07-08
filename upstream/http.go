@@ -3,14 +3,13 @@ package upstream
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/yiffyi/gorad/radhttp"
 )
 
 const baseURL = "http://dhwc.westlake.edu.cn"
@@ -80,27 +79,19 @@ func (s *Session) httpPost(path string, data map[string]string) (map[string]inte
 		body.Set(k, v)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, baseURL+path, strings.NewReader(body.Encode()))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := s.c.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
+	req, err := radhttp.NewURLEncodedFormRequest(baseURL+path, body)
 	if err != nil {
 		return nil, err
 	}
 
 	var result map[string]interface{}
-	err = json.Unmarshal(respBody, &result)
+	resp, _, err := radhttp.DoAsJSON(s.c, req, &result)
 	if err != nil {
 		return nil, err
+	}
+
+	if err = radhttp.EnsureSuccessful(resp); err != nil {
+		return result, err
 	}
 
 	if int(result["errorCode"].(float64)) != 0 {
@@ -125,39 +116,19 @@ func (s *Session) httpGet(path string, data map[string]string) (map[string]inter
 		params.Set(k, v)
 	}
 
-	u, err := url.ParseRequestURI(baseURL)
-	if err != nil {
-		panic(err)
-	}
-	u.Path = path
-	u.RawQuery = params.Encode()
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	req, err := radhttp.NewGetRequest(baseURL+path, params)
 	if err != nil {
 		return nil, err
-	}
-
-	resp, err := s.c.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	statusOK := resp.StatusCode >= 200 && resp.StatusCode < 300
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("http: status=%s, statusOK=%t, could not read body: %w", resp.Status, statusOK, err)
-	}
-
-	if !statusOK {
-		return nil, fmt.Errorf("http: bad statusCode: %d %s", resp.StatusCode, resp.Status)
 	}
 
 	var result map[string]interface{}
-	err = json.Unmarshal(respBody, &result)
+	resp, _, err := radhttp.DoAsJSON(s.c, req, &result)
 	if err != nil {
 		return nil, err
+	}
+
+	if err = radhttp.EnsureSuccessful(resp); err != nil {
+		return result, err
 	}
 
 	if int(result["errorCode"].(float64)) != 0 {

@@ -1,7 +1,6 @@
 package upstream
 
 import (
-	"fmt"
 	"log/slog"
 	"strconv"
 )
@@ -20,7 +19,6 @@ func (s *Session) CreateOrder(SN string) error {
 		"deviceSncode": SN,
 	})
 
-	fmt.Println(result)
 	if err != nil {
 		if result != nil {
 			if int(result["errorCode"].(float64)) == 307 {
