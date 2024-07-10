@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -121,14 +122,21 @@ func (s *Session) httpGet(path string, data map[string]string) (map[string]inter
 		return nil, err
 	}
 
-	var result map[string]interface{}
-	resp, _, err := radhttp.DoAsJSON(s.c, req, &result)
+	resp, err := s.c.Do(req)
 	if err != nil {
+		return nil, fmt.Errorf("unable to perform request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// because body is not JSON when unsuccess
+	if err = radhttp.EnsureSuccessful(resp); err != nil {
 		return nil, err
 	}
 
-	if err = radhttp.EnsureSuccessful(resp); err != nil {
-		return result, err
+	var result map[string]interface{}
+	_, err = radhttp.AsJSON(resp, &result)
+	if err != nil {
+		return nil, err
 	}
 
 	if int(result["errorCode"].(float64)) != 0 {
