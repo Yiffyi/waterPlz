@@ -22,7 +22,7 @@ type Watchdog struct {
 	sess       *upstream.Session
 	wecom      *notification.WeComBot
 	tz         *time.Location
-	down       bool
+	down       int
 	lastOnline time.Time
 }
 
@@ -106,7 +106,8 @@ func (w *Watchdog) Start(bot *notification.WeComBot) {
 
 	// to avoid conflit, currently don't test functions require login
 	w.sess = upstream.CreateAnonymousSession()
-	w.down = false
+	// 0: normal; 1,2,3: error, hasn't notified; -1: error, notified
+	w.down = 0
 	w.wecom = bot
 	var err error
 	w.tz, err = time.LoadLocation("Asia/Shanghai")
@@ -126,16 +127,22 @@ func (w *Watchdog) Start(bot *notification.WeComBot) {
 
 		// 2. check if my device is online
 		if err := w.checkDeviceStatus(); err != nil {
-			if !w.down {
-				w.notifyError(err)
-				w.down = true
+			// old Chinese saying goes: 事不过三
+			if w.down >= 0 {
+				w.down++
+				if w.down >= 6 {
+					w.notifyError(err)
+					w.down = -1
+				}
+			} else {
+				// already notified
 			}
 			continue
 		}
 
 		// recovered ?
-		if w.down {
-			w.down = false
+		if w.down != 0 {
+			w.down = 0
 			w.notifyRecover()
 		}
 		w.lastOnline = now
